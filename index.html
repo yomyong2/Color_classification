@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>색맹을 위한 인공지능 모델</title>
+    <style>
+        /* 전체 페이지 스타일 */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            transform: scale(0.8);
+            transform-origin: top left;
+        }
+
+        /* 제목 스타일 */
+        h1 {
+            color: #333;
+            font-size: 1.5em;
+            text-align: center;
+        }
+
+        /* 웹캠 컨테이너 스타일 */
+        #webcam-container {
+            margin: 10px 0;
+            position: relative;
+        }
+
+        /* 비디오 스타일 */
+        video {
+            border: 2px solid #333;
+            border-radius: 10px;
+            width: 90vw;
+            max-width: 400px;
+        }
+
+        /* 라벨 컨테이너 스타일 */
+        #label-container {
+            margin-top: 10px;
+            width: 90vw;
+            max-width: 400px;
+        }
+
+        /* 라벨 스타일 */
+        .label {
+            display: flex;
+            align-items: center;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 5px 0;
+            width: 100%;
+        }
+
+        /* 색상별 바 스타일 */
+        .label .bar {
+            height: 20px;
+            margin-left: 10px;
+            border-radius: 5px;
+            flex-grow: 1;
+        }
+
+        .label.red .bar {
+            background-color: red;
+        }
+
+        .label.orange .bar {
+            background-color: orange;
+        }
+
+        .label.yellow .bar {
+            background-color: yellow;
+        }
+
+        .label.green .bar {
+            background-color: green;
+        }
+
+        .label.blue .bar {
+            background-color: blue;
+        }
+
+        .label.purple .bar {
+            background-color: purple;
+        }
+
+        .label.pink .bar {
+            background-color: pink;
+        }
+
+        .label.brown .bar {
+            background-color: brown;
+        }
+
+        /* 가장 높은 예측값 스타일 */
+        #highest-prediction {
+            font-size: 1em;
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* 모바일 리디렉션 안내 스타일 */
+        #mobile-redirect {
+            font-size: 1em;
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>색맹을 위한 인공지능 모델</h1>
+    <div id="highest-prediction"></div>
+    <div id="webcam-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+    <div id="label-container"></div>
+    <div id="mobile-redirect">모바일에서만 이용 가능합니다.</div>
+    <script>
+        // 모바일 확인 및 리디렉션
+        if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            window.location.href = 'https://www.example.com'; // 모바일이 아닌 경우 다른 페이지로 리디렉션
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        // 모델 URL 설정
+        const URL = "./my_model/";
+
+        let model, labelContainer, maxPredictions;
+        const videoElement = document.getElementById('video');
+        const classColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'brown'];
+        const classNames = ['빨간색', '주황색', '노란색', '초록색', '파란색', '보라색', '핑크색', '갈색'];
+
+        // 초기화 함수
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            // 모델과 메타데이터를 로드
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            // 후면 카메라 설정
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: 'environment' } }
+                });
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    window.requestAnimationFrame(loop);
+                };
+            } catch (err) {
+                console.error("카메라 접근에 실패했습니다: ", err);
+            }
+
+            // 라벨 컨테이너 설정
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                const labelDiv = document.createElement("div");
+                labelDiv.className = `label ${classColors[i]}`;
+                labelDiv.innerHTML = `
+                    <span>${classNames[i]}</span>
+                    <div class="bar-container" style="flex-grow: 1; margin-left: 10px;">
+                        <div class="bar" style="width: 0%;"></div>
+                    </div>
+                    <span class="percentage">0%</span>
+                `;
+                labelContainer.appendChild(labelDiv);
+            }
+        }
+
+        // 예측 루프 함수
+        async function loop() {
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // 예측 함수
+        async function predict() {
+            const prediction = await model.predict(videoElement);
+            let highestPrediction = { className: '', probability: 0 };
+
+            // 예측 결과를 라벨에 업데이트
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i];
+                const percentage = (classPrediction.probability * 100).toFixed(2);
+                const labelDiv = labelContainer.childNodes[i];
+                const bar = labelDiv.querySelector(".bar");
+                const percentageText = labelDiv.querySelector(".percentage");
+
+                bar.style.width = `${percentage}%`;
+                percentageText.innerHTML = `${percentage}%`;
+
+                // 가장 높은 예측값을 찾음
+                if (classPrediction.probability > highestPrediction.probability) {
+                    highestPrediction = classPrediction;
+                }
+            }
+
+            // 가장 높은 예측값을 화면에 표시
+            document.getElementById("highest-prediction").innerHTML = `Highest Prediction: ${highestPrediction.className} (${(highestPrediction.probability * 100).toFixed(2)}%)`;
+        }
+
+        // 페이지 로드 시 초기화 함수 호출
+        window.onload = init;
+    </script>
+</body>
+</html>
